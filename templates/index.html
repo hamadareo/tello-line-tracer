@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telloライントレース・管理ダッシュボード</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- ヘッダー -->
+        <header class="glass-header">
+            <div class="logo">
+                <span class="logo-icon">🚁</span>
+                <h1>Drone Line Tracer <span class="badge" id="mode-badge">接続中</span></h1>
+            </div>
+            <div class="header-status">
+                <div class="status-item">
+                    <span class="status-label">バッテリー:</span>
+                    <div class="battery-container">
+                        <div class="battery-bar" id="battery-bar" style="width: 0%;"></div>
+                        <span class="battery-text" id="battery-text">--%</span>
+                    </div>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">状態:</span>
+                    <span class="status-val text-red" id="flight-status">着陸済 (LANDED)</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- メインコンテンツ -->
+        <main class="dashboard-grid">
+            
+            <!-- ビデオフィードエリア -->
+            <section class="card video-section">
+                <div class="card-header">
+                    <h2>ライブビデオフィード</h2>
+                    <div class="tab-buttons">
+                        <button class="tab-btn active" onclick="switchFeed('camera')">カメラ映像</button>
+                        <button class="tab-btn" onclick="switchFeed('threshold')">二値化映像 (しきい値)</button>
+                    </div>
+                </div>
+                <div class="video-container" style="cursor: crosshair; user-select: none;">
+                    <img id="video-stream" src="/video_feed" alt="ビデオストリームが見つかりません" draggable="false">
+                </div>
+                <div class="feed-description" id="feed-desc">
+                    カメラのリアルタイム画像に、検出されたラインの輪郭（緑色）、重心（赤点）、および進むべき方向（青線）を描画しています。
+                </div>
+            </section>
+
+            <!-- ステータス・コントロールエリア -->
+            <div class="right-column">
+                
+                <!-- 手動コントロールカード -->
+                <section class="card control-section">
+                    <h2>フライトコントロール</h2>
+                    <div class="control-buttons">
+                        <button id="btn-takeoff" class="btn btn-takeoff" onclick="sendCommand('takeoff')">
+                            <span class="icon">🚀</span> 離陸 (Takeoff)
+                        </button>
+                        <button id="btn-land" class="btn btn-land" onclick="sendCommand('land')">
+                            <span class="icon">🛬</span> 着陸 (Land)
+                        </button>
+                        <button id="btn-emergency" class="btn btn-emergency" onclick="sendCommand('emergency')">
+                            <span class="icon">🚨</span> 緊急着陸 (Emergency)
+                        </button>
+                    </div>
+                    <div class="control-buttons" style="margin-top: 15px;">
+                        <button id="btn-lap" class="btn btn-takeoff" style="background: linear-gradient(135deg, #a855f7, #6366f1); width: 100%;" onclick="sendCommand('lap')">
+                            <span class="icon">⏱️</span> ラップ開始 / 終了 (Lap)
+                        </button>
+                    </div>
+                    <p class="param-desc" style="margin-top: 10px; text-align: center;">スタートライン通過時に押すことでコースを学習します。</p>
+                    
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+                    
+                    <h3>システムログ</h3>
+                    <div id="system-logs" style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.85em; color: #fca5a5; line-height: 1.4;">
+                        <!-- ログがここに挿入されます -->
+                        <div style="color: #9ca3af;">ログ待機中...</div>
+                    </div>
+                </section>
+
+                <!-- ライン検出状況 & エラーインジケータ -->
+                <section class="card status-section">
+                    <h2>トレースステータス</h2>
+                    <div class="status-details">
+                        <div class="indicator-group">
+                            <span class="ind-label">ライン検出状況:</span>
+                            <span id="line-detect-status" class="badge badge-lost">ロスト</span>
+                        </div>
+                        <div class="indicator-group">
+                            <span class="ind-label">コース学習状況:</span>
+                            <span id="learning-status" class="status-val" style="color: #a855f7; font-weight: bold;">未学習 (Lap 0)</span>
+                        </div>
+                        <div class="indicator-group">
+                            <span class="ind-label">現在の高度 (ToF):</span>
+                            <span id="current-height-val" class="status-val">0 cm</span>
+                        </div>
+                        <div class="indicator-group">
+                            <span class="ind-label">画像中心からのズレ (Error):</span>
+                            <span id="error-val" class="status-val">0</span>
+                        </div>
+                        <div class="error-visualizer">
+                            <div class="error-center-line"></div>
+                            <div id="error-pointer" class="error-pointer" style="left: 50%;"></div>
+                        </div>
+                        <div class="stats-row">
+                            <div class="stat-box">
+                                <span class="stat-label">前進速度</span>
+                                <span class="stat-num" id="stat-forward">0</span>
+                            </div>
+                            <div class="stat-box">
+                                <span class="stat-label">ヨー旋回速度</span>
+                                <span class="stat-num" id="stat-yaw">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- パラメータ調整スライダー -->
+                <section class="card params-section">
+                    <h2>制御パラメータ調整</h2>
+                    
+                    <div class="param-control">
+                        <div class="param-info">
+                            <label for="input-target-height">目標高度 (TARGET_HEIGHT)</label>
+                            <span class="param-val" id="val-target-height">80</span>
+                        </div>
+                        <input type="range" id="input-target-height" min="30" max="150" step="5" value="80" oninput="updateParam('target_height', this.value)">
+                        <span class="param-desc">ドローンが自動で維持しようとする高さ(cm)です。距離センサー(ToF)を用いて制御されます。</span>
+                    </div>
+
+                    <div class="param-control">
+                        <div class="param-info">
+                            <label for="input-roi-start">カメラ注視位置 (ROI開始位置 %)</label>
+                            <span class="param-val" id="val-roi-start-pct">0</span>
+                        </div>
+                        <input type="range" id="input-roi-start" min="0" max="95" step="1" value="0" oninput="updateParam('roi_start_pct', this.value)">
+                        <span class="param-desc">画像を上から何%の位置から下を処理対象にするか。カメラを下向きにした場合は 0% (全画面) の使用を推奨します。</span>
+                    </div>
+
+                    <div class="param-control">
+                        <div class="param-info">
+                            <label for="input-kp">旋回パワー (KPゲイン)</label>
+                            <span class="param-val" id="val-kp">0.4</span>
+                        </div>
+                        <input type="range" id="input-kp" min="0.1" max="1.0" step="0.05" value="0.4" oninput="updateParam('kp', this.value)">
+                        <span class="param-desc">ズレに対する旋回の強さ。大きいほど機敏に曲がりますが、直線でジグザグします。</span>
+                    </div>
+
+                    <div class="param-control">
+                        <div class="param-info">
+                            <label for="input-kd">カーブ予測力 (KDゲイン)</label>
+                            <span class="param-val" id="val-kd">0.5</span>
+                        </div>
+                        <input type="range" id="input-kd" min="0.0" max="2.0" step="0.1" value="0.5" oninput="updateParam('kd', this.value)">
+                        <span class="param-desc">ズレが急激に大きくなった時にどれだけ強く曲がるか(PD制御)。カーブの入り口で威力を発揮します。</span>
+                    </div>
+
+                    <div class="param-control">
+                        <div class="param-info">
+                            <label for="input-forward-speed">前進速度 (FORWARD_SPEED)</label>
+                            <span class="param-val" id="val-forward-speed">12</span>
+                        </div>
+                        <input type="range" id="input-forward-speed" min="5" max="30" step="1" value="12" oninput="updateParam('forward_speed', this.value)">
+                        <span class="param-desc">ライントレース時の前進基準速度。カーブ時には自動で減速します。</span>
+                    </div>
+
+                    <div class="param-control">
+                        <div class="param-info">
+                            <label for="input-thres-val">ラインしきい値 (THRES_VAL)</label>
+                            <span class="param-val" id="val-thres-val">70</span>
+                        </div>
+                        <input type="range" id="input-thres-val" min="20" max="200" step="5" value="70" oninput="updateParam('thres_val', this.value)">
+                        <span class="param-desc">黒色ラインを検出する輝度のしきい値。これ以下のピクセルをラインとして認識します（二値化調整）。</span>
+                    </div>
+
+                    <div class="param-control">
+                        <div class="param-info">
+                            <label for="input-min-area">最小輪郭面積 (MIN_CONTOUR_AREA)</label>
+                            <span class="param-val" id="val-min-area">200</span>
+                        </div>
+                        <input type="range" id="input-min-area" min="50" max="1000" step="50" value="200" oninput="updateParam('min_area', this.value)">
+                        <span class="param-desc">ラインとして認識する最小のピクセル面積。ノイズ（細かなゴミなど）の除去に使用されます。</span>
+                    </div>
+
+                    <div class="param-control">
+                        <div class="param-info">
+                            <label for="input-max-area">最大輪郭面積 (MAX_CONTOUR_AREA)</label>
+                            <span class="param-val" id="val-max-area">5000</span>
+                        </div>
+                        <input type="range" id="input-max-area" min="1000" max="20000" step="500" value="5000" oninput="updateParam('max_area', this.value)">
+                        <span class="param-desc">ラインとして認識する最大のピクセル面積。大きすぎる黒い物体（靴や影など）を除外します。</span>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

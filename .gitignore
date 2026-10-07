@@ -1,0 +1,7 @@
+.DS_Store
+__pycache__/
+*.pyc
+venv/
+.venv/
+# 飛行時に自動で作られるコース学習データ
+course_map.json

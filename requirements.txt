@@ -1,0 +1,4 @@
+djitellopy
+flask
+opencv-python
+numpy
